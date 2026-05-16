@@ -254,7 +254,7 @@ class DiagramGenerator:
             inner_w = max(0.05, bw - 2 * BOX_PAD)
             inner_h = max(0.05, bh - 2 * BOX_PAD)
             # Scale font down until it fits within inner_w × inner_h
-            avg_cw  = fontsize * 0.48 / 72
+            avg_cw  = fontsize * 0.52 / 72
             chars   = max(3, int(inner_w / avg_cw))
             lines   = textwrap.wrap(str(label), width=chars) or [str(label)]
             n_lines = len(lines)
@@ -263,8 +263,8 @@ class DiagramGenerator:
             fs = fontsize
             while n_lines * (fs / 72 * 1.3) > inner_h and fs > 6:
                 fs -= 1
-                avg_cw = fs * 0.48 / 72
-                chars  = max(3, int(inner_w / (fs * 0.48 / 72)))
+                avg_cw = fs * 0.52 / 72
+                chars  = max(3, int(inner_w / (fs * 0.52 / 72)))
                 lines  = textwrap.wrap(str(label), width=chars) or [str(label)]
                 n_lines = len(lines)
             wrapped = "\n".join(lines)
@@ -437,39 +437,39 @@ class DiagramGenerator:
             n_levels = max(level_nodes.keys(), default=0) + 1
             max_per  = max((len(v) for v in level_nodes.values()), default=1)
 
-            # Font: 22pt for ≤6 levels, scale down for wider diagrams
-            BOX_FONT = 22 if n_levels <= 6 else max(14, int(22 * 6 / n_levels))
+            # Font: 22pt for ≤5 levels, scale down for wider diagrams
+            BOX_FONT = 22 if n_levels <= 5 else max(13, int(22 * 5 / n_levels))
 
             usable_w = FIG_W - 2 * MX
             x_step   = usable_w / n_levels
 
-            # Reserve enough horizontal gap for the longest arrow label text.
-            # Each char ≈ 0.072" at 9pt; add 0.18" padding on both sides.
-            max_label_chars = max(
-                (len(c.get("label", "")) for c in connections),
-                default=0
-            )
-            min_arrow_gap = max(0.22, max_label_chars * 0.072 + 0.18)
-            # Box is a HORIZONTAL rectangle: bw > bh
-            bw = min(x_step * 0.82, x_step - min_arrow_gap)
-            bw = max(bw, x_step * 0.48)  # never shrink boxes below 48% of step
+            # Arrow labels float above the arrow midpoint — they don't need
+            # the full label-text width as clearance between boxes. Use a
+            # small fixed gap so boxes are always as wide as possible.
+            ARROW_GAP = 0.14  # inches — enough for arrowhead + breathing room
+            bw = min(x_step * 0.90, x_step - ARROW_GAP)
+            bw = max(bw, x_step * 0.55)  # never shrink boxes below 55% of step
 
-            # Pre-compute actual wrapped line count for every label so bh is
-            # tall enough for the longest label — not hardcoded to 2 lines.
-            line_h   = BOX_FONT / 72        # inches per line of text
+            # Auto-shrink font from BOX_FONT down until ALL labels wrap to
+            # ≤ 2 lines inside the box, keeping text compact and readable.
             inner_bw = max(0.05, bw - 2 * BOX_PAD)
-            avg_cw   = BOX_FONT * 0.48 / 72
-            cpl      = max(3, int(inner_bw / avg_cw))  # chars per line
-            max_lines = max(
-                len(textwrap.wrap(str(e.get("label", "")), width=cpl) or ["x"])
-                for e in elements
-            ) if elements else 1
+            fs = BOX_FONT
+            for fs in range(BOX_FONT, 9, -1):
+                avg_cw    = fs * 0.52 / 72
+                cpl       = max(3, int(inner_bw / avg_cw))
+                max_lines = max(
+                    len(textwrap.wrap(str(e.get("label", "")), width=cpl) or ["x"])
+                    for e in elements
+                ) if elements else 1
+                if max_lines <= 2:
+                    break
+            BOX_FONT = fs
 
-            V_PAD = 2 * BOX_PAD + 0.06     # top + bottom internal padding
-            bh    = line_h * max_lines * 1.3 + V_PAD
-            # Cap so all nodes fit vertically; floor so at least 1 line fits
-            bh    = min(bh, (BODY_H - (max_per - 1) * 0.18) / max(max_per, 1))
-            bh    = max(bh, line_h * 1.3 + V_PAD)
+            line_h = BOX_FONT / 72
+            V_PAD  = 2 * BOX_PAD + 0.06
+            bh     = line_h * max_lines * 1.3 + V_PAD
+            bh     = min(bh, (BODY_H - (max_per - 1) * 0.18) / max(max_per, 1))
+            bh     = max(bh, line_h * 1.3 + V_PAD)
 
             # Gap between stacked nodes — minimum 0.18" breathing room
             gap_y  = (BODY_H - max_per * bh) / max(max_per - 1, 1)
