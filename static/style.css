@@ -340,6 +340,23 @@ details.integrations-block[open] > summary::before { transform: rotate(90deg); }
 .slide-num { font-size: 12px; color: #9CA3AF; font-weight: 600; min-width: 20px; flex-shrink: 0; }
 .slide-title-input { flex: 1; }
 .slide-type-select { width: 140px; flex-shrink: 0; font-size: 12px; padding: 5px 8px; }
+.reorder-btns { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+.reorder-btn {
+  background: none;
+  border: 1px solid #D1D5DB;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  cursor: pointer;
+  color: #6B7280;
+}
+.reorder-btn:hover:not(:disabled) { background: #F3F4F6; color: #111827; }
+.reorder-btn:disabled { opacity: 0.3; cursor: default; }
+/* Locked state after Generate is clicked */
+#plan-editor input:disabled,
+#plan-editor select:disabled { opacity: 0.55; cursor: not-allowed; background: #F9FAFB; }
+#plan-editor .reorder-btn:disabled { opacity: 0.2; }
 .slides-info { font-size: 13px; color: #374151; margin-top: 10px; }
 
 /* ─── Email list (Gmail) ──────────────────────────────────────────────────── */

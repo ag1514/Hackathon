@@ -2,10 +2,9 @@ import os
 import json
 from utils.claude_client import ClaudeClient
 from utils.config import BRAND_HEX
+from utils.prompt_loader import get_prompt
 
-SYSTEM_PROMPT = """You are a diagram designer. You create clean, professional Excalidraw diagrams
-for business presentations at Indiamart. Use the brand colors provided.
-Return ONLY a valid JSON array of Excalidraw elements."""
+SYSTEM_PROMPT = get_prompt("diagram_generator")
 
 DIAGRAM_PROMPT = """Create an Excalidraw diagram for a presentation slide.
 
@@ -240,6 +239,9 @@ class DiagramGenerator:
             e.setdefault("id", f"_{i}")
 
         # ── draw_box: cx/cy/bw/bh in inches (= data coords) ─────────────────
+        # 10pt padding on every side so text visibly clears the box edge
+        BOX_PAD = 10 / 72  # inches ≈ 0.139"
+
         def draw_box(cx, cy, bw, bh, label, group, fontsize=22, zorder=3):
             fill, border = gc(group)
             rect = patches.FancyBboxPatch(
@@ -248,24 +250,42 @@ class DiagramGenerator:
                 facecolor=fill, edgecolor=border,
                 linewidth=2, zorder=zorder)
             ax.add_patch(rect)
-            # Horizontal padding: 0.18" each side; vertical padding baked into bh
-            H_PAD = 0.18
-            inner_w = max(0.1, bw - 2 * H_PAD)
-            # Avg char width for regular (non-bold) Calibri ≈ fontsize*0.48/72 inches
-            avg_cw  = fontsize * 0.48 / 72
-            chars   = max(5, int(inner_w / avg_cw))
+            # Strict 2pt padding all sides — text never touches box edge
+            inner_w = max(0.05, bw - 2 * BOX_PAD)
+            inner_h = max(0.05, bh - 2 * BOX_PAD)
+            # Scale font down until it fits within inner_w × inner_h
+            avg_cw  = fontsize * 0.52 / 72
+            chars   = max(3, int(inner_w / avg_cw))
             lines   = textwrap.wrap(str(label), width=chars) or [str(label)]
+            n_lines = len(lines)
+            line_h  = fontsize / 72 * 1.3   # inches per line with spacing
+            # Reduce font until all lines fit vertically within inner_h
+            fs = fontsize
+            while n_lines * (fs / 72 * 1.3) > inner_h and fs > 6:
+                fs -= 1
+                avg_cw = fs * 0.52 / 72
+                chars  = max(3, int(inner_w / (fs * 0.52 / 72)))
+                lines  = textwrap.wrap(str(label), width=chars) or [str(label)]
+                n_lines = len(lines)
             wrapped = "\n".join(lines)
             txt = ax.text(cx, cy, wrapped,
                           ha="center", va="center",
-                          fontsize=fontsize, fontweight="normal",   # NOT bold
+                          fontsize=fs, fontweight="normal",
                           color="#1F2937", zorder=zorder + 1,
                           multialignment="center",
                           linespacing=1.3)
-            txt.set_clip_path(rect)
+            # Clip to inner padded rect so text never bleeds to box edge
+            inner_clip = patches.Rectangle(
+                (cx - inner_w / 2, cy - inner_h / 2), inner_w, inner_h,
+                fill=False, edgecolor="none", zorder=zorder + 1)
+            ax.add_patch(inner_clip)
+            txt.set_clip_path(inner_clip)
             txt.set_clip_on(True)
 
         # ── draw_arrow: coordinates in inches ────────────────────────────────
+        # Approx inches per char at 9pt on this figure size
+        _CHAR_W = 0.072
+
         def draw_arrow(sx, sy, dx, dy, label="", color="#6B7280"):
             ax.annotate("", xy=(dx, dy), xytext=(sx, sy),
                         arrowprops=dict(
@@ -275,8 +295,15 @@ class DiagramGenerator:
                             mutation_scale=12),
                         zorder=6)
             if label:
-                ax.text((sx + dx) / 2, (sy + dy) / 2 + 0.08,
-                        label, ha="center", fontsize=9, color="#6B7280", zorder=7)
+                # Scale font down so label never exceeds the arrow gap length
+                h_gap = abs(dx - sx)
+                v_gap = abs(dy - sy)
+                avail = h_gap if h_gap > 0.05 else v_gap
+                needed = len(label) * _CHAR_W
+                base_font = 9
+                font = base_font if needed <= avail else max(6, int(base_font * avail / needed))
+                ax.text((sx + dx) / 2, (sy + dy) / 2 + 0.10,
+                        label, ha="center", fontsize=font, color="#6B7280", zorder=7)
 
         # ── TIMELINE ─────────────────────────────────────────────────────────
         if diagram_type == "timeline":
@@ -410,19 +437,37 @@ class DiagramGenerator:
             n_levels = max(level_nodes.keys(), default=0) + 1
             max_per  = max((len(v) for v in level_nodes.values()), default=1)
 
-            # Font: 22pt for ≤6 levels, scale down for wider diagrams
-            BOX_FONT = 22 if n_levels <= 6 else max(14, int(22 * 6 / n_levels))
+            # Font: 22pt for ≤5 levels, scale down for wider diagrams
+            BOX_FONT = 22 if n_levels <= 5 else max(13, int(22 * 5 / n_levels))
 
             usable_w = FIG_W - 2 * MX
             x_step   = usable_w / n_levels
-            # Box is a HORIZONTAL rectangle: bw > bh
-            bw = x_step * 0.82
 
-            # Height: 2 lines of text + generous top/bottom padding (0.20" each side)
-            line_h = BOX_FONT / 72          # inches per line of text
-            V_PAD  = 0.22                   # vertical padding top + bottom
-            bh     = line_h * 2 * 1.3 + V_PAD   # 2 lines with spacing + padding
-            # Cap so all nodes fit vertically; floor so at least 1 line fits
+            # Arrow labels float above the arrow midpoint — they don't need
+            # the full label-text width as clearance between boxes. Use a
+            # small fixed gap so boxes are always as wide as possible.
+            ARROW_GAP = 0.14  # inches — enough for arrowhead + breathing room
+            bw = min(x_step * 0.90, x_step - ARROW_GAP)
+            bw = max(bw, x_step * 0.55)  # never shrink boxes below 55% of step
+
+            # Auto-shrink font from BOX_FONT down until ALL labels wrap to
+            # ≤ 2 lines inside the box, keeping text compact and readable.
+            inner_bw = max(0.05, bw - 2 * BOX_PAD)
+            fs = BOX_FONT
+            for fs in range(BOX_FONT, 9, -1):
+                avg_cw    = fs * 0.52 / 72
+                cpl       = max(3, int(inner_bw / avg_cw))
+                max_lines = max(
+                    len(textwrap.wrap(str(e.get("label", "")), width=cpl) or ["x"])
+                    for e in elements
+                ) if elements else 1
+                if max_lines <= 2:
+                    break
+            BOX_FONT = fs
+
+            line_h = BOX_FONT / 72
+            V_PAD  = 2 * BOX_PAD + 0.06
+            bh     = line_h * max_lines * 1.3 + V_PAD
             bh     = min(bh, (BODY_H - (max_per - 1) * 0.18) / max(max_per, 1))
             bh     = max(bh, line_h * 1.3 + V_PAD)
 

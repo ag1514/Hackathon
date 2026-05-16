@@ -1,9 +1,8 @@
 import yaml
 from utils.claude_client import ClaudeClient
+from utils.prompt_loader import get_prompt
 
-SYSTEM_PROMPT = """You are a presentation strategist at Indiamart Intermesh Ltd.
-You create slide plans that match the specific preferences of the leader being presented to.
-Every slide must have a clear purpose and key message."""
+SYSTEM_PROMPT = get_prompt("slide_planner")
 
 PLANNING_PROMPT = """Create a slide-by-slide plan for a presentation.
 

@@ -1,4 +1,5 @@
 import os
+import textwrap
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
@@ -104,18 +105,32 @@ class PPTRenderer:
         # Height fills from ts_y up to just above the grey line
         ts_h = _TS_Y_CONTENT - ts_y - 0.28
 
-        # ONE title textbox — word_wrap keeps all lines inside the box,
-        # TEXT_TO_FIT_SHAPE shrinks font if the estimate was off so text never clips.
+        # Manual font shrink: find the largest font where all wrapped lines
+        # fit inside ts_h. Zero out internal margins so declared box == usable area.
+        final_font = ts_font
+        for fs in range(ts_font, max(self.min_font, 12) - 1, -1):
+            avg_char_w = fs * 0.52 / 72       # inches per char (proportional estimate)
+            chars = max(8, int(_TS_WIDTH / avg_char_w))
+            wrapped_lines = textwrap.wrap(title, width=chars) or [title]
+            line_h_in = fs / 72 * 1.35        # inches per line at 1.35× leading
+            if len(wrapped_lines) * line_h_in <= ts_h:
+                final_font = fs
+                break
+
         txBox = slide.shapes.add_textbox(
             Inches(_TS_LEFT), Inches(ts_y),
             Inches(_TS_WIDTH), Inches(ts_h))
         tf = txBox.text_frame
         tf.word_wrap = True
-        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        tf.auto_size = MSO_AUTO_SIZE.NONE
+        tf.margin_left   = Emu(0)
+        tf.margin_right  = Emu(0)
+        tf.margin_top    = Emu(0)
+        tf.margin_bottom = Emu(0)
         p = tf.paragraphs[0]
         run = p.add_run()
         run.text = title
-        run.font.size = Pt(ts_font)
+        run.font.size = Pt(final_font)
         run.font.bold = True
         run.font.name = FONT_FAMILY
         run.font.color.rgb = BRAND["dark"]

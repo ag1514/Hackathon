@@ -6,11 +6,9 @@ import shutil
 import requests
 import pandas as pd
 from utils.claude_client import ClaudeClient
+from utils.prompt_loader import get_prompt
 
-SYSTEM_PROMPT = """You are a business analyst at Indiamart Intermesh Ltd.
-Your job is to extract structured content from source material for presentations.
-Extract ONLY what exists in the source. Do NOT invent or hallucinate data.
-If data is ambiguous, flag it with [VERIFY] prefix."""
+SYSTEM_PROMPT = get_prompt("content_extractor")
 
 EXTRACTION_PROMPT = """Analyze the following source material and extract structured content for a presentation.
 
