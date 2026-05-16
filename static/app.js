@@ -166,7 +166,11 @@ function setupFileDrop() {
     const input = document.getElementById(targetId) || zone.querySelector("input[type=file]");
     if (!input) return;
 
-    zone.addEventListener("click", () => input.click());
+    zone.addEventListener("click", () => {
+      // Snapshot existing files before the picker opens so we can merge after.
+      input._prevFiles = Array.from(input.files || []);
+      input.click();
+    });
 
     zone.addEventListener("dragover", e => { e.preventDefault(); zone.classList.add("dragover"); });
     zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
@@ -176,7 +180,16 @@ function setupFileDrop() {
       addFiles(input, e.dataTransfer.files);
     });
 
-    input.addEventListener("change", () => addFiles(input, input.files));
+    // After picker closes, input.files = only the new selection.
+    // Merge with previously snapshotted files to accumulate across picks.
+    input.addEventListener("change", () => {
+      const dt = new DataTransfer();
+      (input._prevFiles || []).forEach(f => dt.items.add(f));
+      Array.from(input.files).forEach(f => dt.items.add(f));
+      input._prevFiles = null;
+      input.files = dt.files;
+      renderFileList(input);
+    });
   });
 }
 
@@ -619,7 +632,7 @@ function renderPlanEditor(plan) {
   const container = document.getElementById("plan-editor");
   container.innerHTML = "";
 
-  plan.forEach(slide => {
+  plan.forEach((slide, idx) => {
     const sn = slide.slide_number;
     const row = document.createElement("div");
     row.className = "slide-row";
@@ -630,26 +643,46 @@ function renderPlanEditor(plan) {
     ).join("");
 
     row.innerHTML = `
-      <input type="checkbox" class="keep-chk" checked title="Keep this slide" />
+      <input type="checkbox" class="keep-chk" checked title="Include this slide" />
       <span class="slide-num">${sn}</span>
       <input type="text" class="slide-title-input" value="${escAttr(slide.title || "")}"
              placeholder="Slide ${sn} (${slide.slide_type || "content"})" />
-      <select class="slide-type-select">${typeOptions}</select>`;
+      <select class="slide-type-select">${typeOptions}</select>
+      <div class="reorder-btns">
+        <button class="reorder-btn" data-dir="-1" title="Move up" ${idx === 0 ? "disabled" : ""}>▲</button>
+        <button class="reorder-btn" data-dir="1"  title="Move down" ${idx === plan.length - 1 ? "disabled" : ""}>▼</button>
+      </div>`;
 
     row.querySelector(".keep-chk").addEventListener("change", updateSlidesInfo);
-    row.querySelector(".slide-title-input").addEventListener("input", updateSlidesInfo);
+    row.querySelectorAll(".reorder-btn").forEach(btn => {
+      btn.addEventListener("click", () => reorderSlide(idx, parseInt(btn.dataset.dir)));
+    });
     container.appendChild(row);
   });
 
   updateSlidesInfo();
 }
 
+function reorderSlide(idx, dir) {
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= AppState.plan.length) return;
+  const plan = AppState.plan;
+  [plan[idx], plan[newIdx]] = [plan[newIdx], plan[idx]];
+  renderPlanEditor(plan);
+}
+
+function lockPlanEditor() {
+  document.querySelectorAll("#plan-editor input, #plan-editor select, #plan-editor button").forEach(el => {
+    el.disabled = true;
+  });
+}
+
 function collectEditedPlan() {
   const rows = document.querySelectorAll(".slide-row");
   const result = [];
   rows.forEach(row => {
-    const keep = row.querySelector(".keep-chk").checked;
-    if (!keep) return;
+    const keepEl = row.querySelector(".keep-chk");
+    if (keepEl && !keepEl.checked) return;
     const sn = parseInt(row.dataset.sn);
     const orig = AppState.plan.find(s => s.slide_number === sn) || {};
     result.push({
@@ -682,6 +715,9 @@ async function submitGenerate() {
     btn.disabled = false; btn.textContent = "⚡ Generate PPT";
     return;
   }
+
+  // Lock plan editor so nothing can be changed once generation starts
+  lockPlanEditor();
 
   try {
     const r = await fetch("/api/generate", {

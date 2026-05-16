@@ -1,8 +1,7 @@
 from utils.claude_client import ClaudeClient
+from utils.prompt_loader import get_prompt
 
-SYSTEM_PROMPT = """You are a presentation content writer at Indiamart Intermesh Ltd.
-You write concise, impactful slide content tailored to the audience.
-Every word must earn its place on the slide."""
+SYSTEM_PROMPT = get_prompt("slide_generator")
 
 SLIDE_CONTENT_PROMPT = """Generate content for slide {slide_number} of {total_slides}.
 
