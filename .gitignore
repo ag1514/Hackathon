@@ -7,3 +7,5 @@ temp/
 *.pptx.tmp
 .DS_Store
 credentials.json
+token.json
+streamlit_err.log

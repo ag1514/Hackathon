@@ -533,7 +533,8 @@ with st.expander("🔌 Integrations  —  GitHub / OpenProject / Google Sheets /
 
                         _chk_col, _info_col = st.columns([0.5, 9.5])
                         with _chk_col:
-                            st.checkbox("", key=f"gmail_chk_{_tid}")
+                            st.checkbox("Select", key=f"gmail_chk_{_tid}",
+                                        label_visibility="collapsed")
                         with _info_col:
                             _badge = f"&nbsp;🔗 {_tcount}" if _tcount > 1 else ""
                             st.markdown(
@@ -875,7 +876,8 @@ if "plan" in st.session_state:
         col_a, col_b, col_c = st.columns([0.5, 3, 1])
 
         with col_a:
-            keep = st.checkbox("", value=True, key=f"keep_{sn}")
+            keep = st.checkbox("Keep", value=True, key=f"keep_{sn}",
+                               label_visibility="collapsed")
 
         with col_b:
             new_title = st.text_input(
